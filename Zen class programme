@@ -1,0 +1,173 @@
+use zen_class_programme;
+
+
+db.users.insertMany([
+  { _id: 1, name: "Ramya", email: "ramya@example.com" },
+  { _id: 2, name: "Sara", email: "sara@example.com" },
+  { _id: 3, name: "Sathish", email: "sathish@example.com" }
+]);
+
+
+db.codekata.insertMany([
+  { user_id: 1, problems_solved: 100 },
+  { user_id: 2, problems_solved: 75 },
+  { user_id: 3, problems_solved: 45 }
+]);
+
+
+db.attendance.insertMany([
+  { user_id: 1, date: new Date("2020-10-16"), present: true },
+  { user_id: 2, date: new Date("2020-10-16"), present: false },
+  { user_id: 3, date: new Date("2020-10-20"), present: false }
+]);
+
+
+db.topics.insertMany([
+  { topic_id: 1, title: "React", date: new Date("2020-10-10") },
+  { topic_id: 2, title: "MySQL", date: new Date("2020-10-25") },
+  { topic_id: 3, title: "MongoDB", date: new Date("2020-11-05") }
+]);
+
+
+db.tasks.insertMany([
+  { task_id: 1, topic_id: 1, title: "React Task", due_date: new Date("2020-10-12"), submitted: true, user_id: 1 },
+  { task_id: 2, topic_id: 2, title: "MySQL Task", due_date: new Date("2020-10-27"), submitted: false, user_id: 2 },
+  { task_id: 3, topic_id: 3, title: "MongoDB Task", due_date: new Date("2020-11-07"), submitted: false, user_id: 3 }
+]);
+
+
+db.company_drives.insertMany([
+  { drive_id: 1, company: "Google", date: new Date("2020-10-20"), student_ids: [1, 2] },
+  { drive_id: 2, company: "Amazon", date: new Date("2020-10-28"), student_ids: [2, 3] },
+  { drive_id: 3, company: "Microsoft", date: new Date("2020-11-05"), student_ids: [1] }
+]);
+
+
+db.mentors.insertMany([
+  { mentor_id: 1, name: "Rupan", mentee_ids: [1, 2] },
+  { mentor_id: 2, name: "Gandhi", mentee_ids: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] }
+]);
+
+
+
+ ---------------------- QUERIES ----------------------
+
+// 1. Find all the topics and tasks that are taught in October
+print("Topics and Tasks taught in October");
+
+db.topics.aggregate([
+  {
+    $match: {
+      date: {
+        $gte: new Date("2020-10-01"),
+        $lte: new Date("2020-10-31")
+      }
+    }
+  },
+  {
+    $lookup: {
+      from: "tasks",
+      localField: "topic_id",
+      foreignField: "topic_id",
+      as: "related_tasks"
+    }
+  }
+]).forEach(printjson);
+
+// 2. Find all the company drives that appeared between 15 Oct and 31 Oct 2020
+print("Company Drives between 15-Oct and 31-Oct:");
+
+db.company_drives.find({
+  date: {
+    $gte: new Date("2020-10-15"),
+    $lte: new Date("2020-10-31")
+  }
+}).forEach(printjson);
+
+// 3. Find all the company drives and students who appeared for the placement
+print("Company Drives with Students Appeared:");
+
+db.company_drives.aggregate([
+  {
+    $lookup: {
+      from: "users",
+      localField: "student_ids",
+      foreignField: "_id",
+      as: "students"
+    }
+  }
+]).forEach(printjson);
+
+// 4. Find the number of problems solved by each user in codekata
+print("Problems Solved by Users:");
+
+db.users.aggregate([
+  {
+    $lookup: {
+      from: "codekata",
+      localField: "_id",
+      foreignField: "user_id",
+      as: "kata"
+    }
+  },
+  {
+    $unwind: "$kata"
+  },
+  {
+    $project: {
+      name: 1,
+      problems_solved: "$kata.problems_solved"
+    }
+  }
+]).forEach(printjson);
+
+// 5. Find all the mentors who have more than 15 mentees
+print("Mentors with more than 15 mentees:");
+
+db.mentors.find({
+  $expr: { $gt: [{ $size: "$mentee_ids" }, 15] }
+}).forEach(printjson);
+
+// 6. Find the number of absent users and the tasks that were not submitted between 15-Oct and 31-Oct-2020
+print("Users Absent & Task Not Submitted (15-31 Oct):");
+
+db.attendance.aggregate([
+  {
+    $match: {
+      present: false,
+      date: {
+        $gte: new Date("2020-10-15"),
+        $lte: new Date("2020-10-31")
+      }
+    }
+  },
+  {
+    $lookup: {
+      from: "tasks",
+      let: { userId: "$user_id" },
+      pipeline: [
+        {
+          $match: {
+            $expr: {
+              $and: [
+                { $eq: ["$user_id", "$$userId"] },
+                { $eq: ["$submitted", false] },
+                { $gte: ["$due_date", new Date("2020-10-15")] },
+                { $lte: ["$due_date", new Date("2020-10-31")] }
+              ]
+            }
+          }
+        }
+      ],
+      as: "not_submitted_tasks"
+    }
+  },
+  {
+    $match: {
+      "not_submitted_tasks.0": { $exists: true }
+    }
+  },
+  {
+    $count: "users_absent_and_not_submitted"
+  }
+]).forEach(printjson);
